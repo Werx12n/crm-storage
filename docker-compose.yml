@@ -1,0 +1,86 @@
+# WMS — запуск однією командою: docker compose up --build
+# Сервіси: db (PostgreSQL 16), api (FastAPI + mock ERP/EDI/доставка), worker (outbox → ERP/доставка),
+#          web (АРМ + ТЗД, nginx, HTTP 8088 / HTTPS 8443, API 8010), backup (pg_dump кожні 15 хв — NFR-2.2).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wms
+      POSTGRES_USER: wms
+      POSTGRES_PASSWORD: wms
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d wms"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment: &backend_env
+      DATABASE_URL: postgresql+psycopg://wms:wms@db:5432/wms
+      JWT_SECRET: ${JWT_SECRET:-change-me-wms-dev-secret-0123456789}
+      ERP_URL: http://api:8000/mock/erp
+      DELIVERY_URL: http://api:8000/mock/delivery
+      WAREHOUSE_CODE: WH1
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WMS_API_PORT:-8010}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend_env
+      WORKER_INTERVAL: "2"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WMS_HTTP_PORT:-8088}:80"
+      - "${WMS_HTTPS_PORT:-8443}:443"
+    volumes:
+      - certs:/etc/nginx/certs
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: wms
+      PGPASSWORD: wms
+      PGDATABASE: wms
+      BACKUP_INTERVAL_SECONDS: 900
+      BACKUP_KEEP: 96
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./scripts/restore.sh:/restore.sh:ro
+      - backups:/backups
+    entrypoint: ["sh", "/backup.sh", "--loop"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  backups:
+  certs:
