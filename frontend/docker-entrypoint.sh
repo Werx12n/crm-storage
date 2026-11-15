@@ -7,4 +7,6 @@ if [ ! -f /etc/nginx/certs/wms.crt ]; then
     -addext "subjectAltName=DNS:localhost,DNS:wms.local,IP:127.0.0.1" \
     -keyout /etc/nginx/certs/wms.key -out /etc/nginx/certs/wms.crt
 fi
+# Порт HTTPS на хості для редиректу HTTP -> HTTPS
+sed -i "s/__HTTPS_PORT__/${WMS_HTTPS_PORT:-8443}/" /etc/nginx/conf.d/default.conf
 exec nginx -g "daemon off;"

@@ -16,7 +16,7 @@ docker compose up --build
 
 | Що | Адреса |
 |---|---|
-| АРМ і ТЗД (HTTP) | http://localhost:8088 |
+| АРМ і ТЗД (HTTP → автоматичний редирект на HTTPS) | http://localhost:8088 |
 | АРМ і ТЗД (HTTPS, потрібен для камери телефона) | https://localhost:8443 (самопідписаний сертифікат — прийміть попередження) |
 | ТЗД напряму | http://localhost:8088/tzd |
 | API (Swagger / OpenAPI 3) | http://localhost:8010/docs, http://localhost:8010/openapi.json |

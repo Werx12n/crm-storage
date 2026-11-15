@@ -1,7 +1,7 @@
 """TC-04 на стенді: навантаження ТЗД/АРМ (NFR-1.1, NFR-1.2).
 
 pip install locust
-locust -f loadtest/locustfile.py --host http://localhost:8088 -u 100 -r 10 -t 5m --headless
+locust -f loadtest/locustfile.py --host http://localhost:8010 -u 100 -r 10 -t 5m --headless
 Критерій: 95-й перцентиль запитів ТЗД ≤ 1000 мс при 100 користувачах.
 """
 import random
