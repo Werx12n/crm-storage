@@ -356,7 +356,25 @@ function Orders() {
   const { data, err, reload } = useLoad(() => get("/api/picking/orders"));
   const tasks = useLoad(() => get("/api/picking/tasks?type=PICK"));
   const repl = useLoad(() => get("/api/picking/tasks?type=REPLENISH"));
+  const products = useLoad(() => get("/api/admin/directories/products"));
   const ready = (data ?? []).filter((o: any) => ["RESERVED", "PARTIAL"].includes(o.status)).length;
+  const emptyLine = { product_code: "", quantity: "" };
+  const [form, setForm] = useState<{ number: string; client: string; toWave: boolean; lines: { product_code: string; quantity: string }[] }>(
+    { number: "", client: "", toWave: false, lines: [emptyLine] });
+  const setLine = (i: number, patch: Partial<{ product_code: string; quantity: string }>) => {
+    const ls = [...form.lines]; ls[i] = { ...ls[i], ...patch }; setForm({ ...form, lines: ls });
+  };
+  const createOrder = async () => {
+    try {
+      const lines = form.lines.filter((l) => l.product_code && Number(l.quantity) > 0)
+        .map((l) => ({ product_code: l.product_code, quantity: Number(l.quantity) }));
+      const r = await post("/api/integration/erp/orders", { number: form.number.trim(), client: form.client.trim(), lines, create_task: !form.toWave });
+      toast(r.partial ? "info" : "ok", r.partial ? `Замовлення ${r.number}: частковий резерв — товару недостатньо`
+        : `Замовлення ${r.number} зарезервовано${r.tasks?.length ? ` · завдання ${r.tasks.join(", ")}` : " · чекає на хвилю"}`);
+      setForm({ number: "", client: "", toWave: form.toWave, lines: [emptyLine] });
+      reload(); tasks.reload();
+    } catch (e) { toastError(e); }
+  };
   const wave = async () => {
     try { const r = await post("/api/picking/waves", { wave: true }); toast("ok", `Сформовано хвилю ${r.wave}: ${r.orders.join(", ")}`); reload(); tasks.reload(); }
     catch (e) { toastError(e); }
@@ -374,7 +392,7 @@ function Orders() {
         </>}
       </PageHead>
       <Alert m={err} />
-      <DataTable rows={data ?? []} filters={[{ key: "status", title: "Статус", label: statusTitle }]} empty="Замовлень немає" emptyHint="Замовлення надходять з ERP через API" cols={[
+      <DataTable rows={data ?? []} filters={[{ key: "status", title: "Статус", label: statusTitle }]} empty="Замовлень немає" emptyHint="Замовлення надходять з ERP або створюються формою нижче" cols={[
         { key: "number", title: "Номер" }, { key: "client", title: "Клієнт" },
         { key: "status", title: "Статус", render: (r) => <span className="row-c"><StatusBadge s={r.status} />{r.partial && <span className="badge b-warn">частковий резерв</span>}</span>, value: (r) => r.status },
         { key: "wave", title: "Хвиля" },
@@ -391,6 +409,33 @@ function Orders() {
             { key: "number", title: "Завдання" }, { key: "status", title: "Статус", render: (r) => <StatusBadge s={r.status} /> },
             { key: "move", title: "Переміщення", render: (r) => r.lines.map((l: any) => `${l.product_code} × ${fmt(l.quantity)}: ${l.from_cell} → ${l.to_cell}`).join("; ") }]} /></div>
       </div>
+      {can(MGR, ADM) && (
+        <div className="card section">
+          <div className="card-head"><h3>Нове замовлення в магазин</h3><span className="muted small">UC-03 · те саме, що надходить з ERP; резерв за FEFO</span></div>
+          <div className="row">
+            <Field label="Номер замовлення" hint="Унікальний номер"><input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} placeholder="ORD-2001" /></Field>
+            <Field label="Магазин (клієнт)"><input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="Магазин №5" /></Field>
+          </div>
+          <div className="stack" style={{ marginTop: 16, gap: 8 }}>
+            {form.lines.map((l, i) => (
+              <div className="row" key={i}>
+                <Field label={i ? "" : "Товар"}><select value={l.product_code} onChange={(e) => setLine(i, { product_code: e.target.value })}>
+                  <option value="">— оберіть —</option>{products.data?.map((p: any) => <option key={p.code} value={p.code}>{p.code} · {p.name}</option>)}</select></Field>
+                <Field label={i ? "" : "Кількість"}><input type="number" min={1} value={l.quantity} style={{ width: 140 }} onChange={(e) => setLine(i, { quantity: e.target.value })} /></Field>
+                {form.lines.length > 1 && <button className="btn btn-ghost" title="Прибрати рядок" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 /></button>}
+              </div>
+            ))}
+          </div>
+          <label className="row-c" style={{ marginTop: 16, gap: 8 }}>
+            <input type="checkbox" checked={form.toWave} onChange={(e) => setForm({ ...form, toWave: e.target.checked })} />
+            Не створювати завдання одразу — додати до наступної хвилі
+          </label>
+          <div className="row" style={{ marginTop: 16 }}>
+            <button className="btn btn-secondary" onClick={() => setForm({ ...form, lines: [...form.lines, emptyLine] })}><Plus />Рядок</button>
+            <button className="btn" disabled={!form.number.trim() || !form.lines.some((l) => l.product_code && Number(l.quantity) > 0)} onClick={createOrder}>Створити замовлення</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
