@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 отриматиЗавдання(виконавець), підтвердитиВідбір(код). FR-3.1…FR-3.4, UC-03."""
+from datetime import timedelta
 from decimal import Decimal
 
 from app.entities import Order, OrderLine, Reservation, Task, TaskLine, Zone, utcnow
@@ -14,9 +15,16 @@ from app.services.rules import RulesService
 OPEN = ("NEW", "IN_PROGRESS")
 
 
+def _naive_utc(dt):
+    if dt is not None and dt.tzinfo is not None:
+        from datetime import timezone
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def order_dict(o: Order) -> dict:
     return {"number": o.number, "client": o.client, "status": o.status, "wave": o.wave,
-            "created_at": o.created_at, "picked_at": o.picked_at, "shipped_at": o.shipped_at,
+            "created_at": o.created_at, "due_at": o.due_at, "picked_at": o.picked_at, "shipped_at": o.shipped_at,
             "partial": any(D(ln.reserved) < D(ln.quantity) for ln in o.lines),
             "lines": [{"id": ln.id, "product_code": ln.product.code, "product_name": ln.product.name,
                        "gtin": ln.product.gtin, "unit": ln.product.unit, "quantity": num(ln.quantity),
@@ -33,7 +41,10 @@ class PickingManager(ManagerBase):
             raise Conflict(f"Замовлення {number} вже отримано", code="duplicate_order")
         if not data.get("lines"):
             raise Invalid("Замовлення не містить рядків", code="empty_order")
-        order = Order(number=number, client=data.get("client", ""), status="NEW")
+        now = utcnow()
+        lead = float(self.dirs.rule("order_lead_hours", "24"))
+        order = Order(number=number, client=data.get("client", ""), status="NEW", created_at=now,
+                      due_at=_naive_utc(data.get("due_at")) or now + timedelta(hours=lead))
         for raw in data["lines"]:
             key = raw.get("product_code") or raw.get("gtin") or ""
             product = self.dirs.product_by_any(key)
@@ -163,7 +174,8 @@ class PickingManager(ManagerBase):
         line = next((ln for ln in open_lines if product and ln.product_id == product.id
                      and (not parsed["batch"] or (ln.batch and ln.batch.number == parsed["batch"]))), None)
         if line is None:  # 5а: блокування підтвердження
-            self.op("PICK_ERROR", 0, task=task, details=f"Скан {product_code} у {cell.address}")
+            self.op("PICK_ERROR", 0, task=task, details=f"Скан {product_code} у {cell.address} "
+                    f"[lines:{','.join(str(ln.id) for ln in open_lines)}]")
             self.commit()
             raise Invalid("Відскановано не той товар — підтвердження заблоковано", code="wrong_product",
                           expected=[ln.product.code for ln in open_lines])
@@ -180,7 +192,7 @@ class PickingManager(ManagerBase):
         dst = self.stock.get_or_create(line.batch, ship_cell)
         self.stock.change(dst, qty)
         self.stock.reserve(dst, qty)
-        self.op("PICK", qty, dst, task, details=f"{cell.address} → {ship_cell.address}")
+        self.op("PICK", qty, dst, task, details=f"{cell.address} → {ship_cell.address} [lines:{line.id}]")
         line.done_quantity = D(line.done_quantity) + qty
         if line.done_quantity >= D(line.quantity):
             line.status = "DONE"

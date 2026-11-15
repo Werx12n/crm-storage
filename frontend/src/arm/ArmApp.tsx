@@ -71,11 +71,11 @@ const Badge = ({ s }: { s: string }) => {
 // ---------- FR-7.1 Панель KPI ----------
 function Dashboard() {
   const { data, err, reload } = useLoad(() => get("/api/analytics/kpi"));
-  useEffect(() => { const t = setInterval(reload, 10000); return () => clearInterval(t); }, [reload]);
+  useEffect(() => { const t = setInterval(reload, 300000); return () => clearInterval(t); }, [reload]);
   return (
     <>
       <h1>Панель KPI</h1>
-      <p className="muted">Оновлюється кожні 10 с · період {data?.period.from} — {data?.period.to}</p>
+      <p className="muted">ВП-06 · оновлюється кожні 5 хв · період {data?.period.from} — {data?.period.to}</p>
       <Msg m={err} />
       <div className="kpis">
         {data?.kpi.map((k: any) => {

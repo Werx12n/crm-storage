@@ -2,6 +2,7 @@
 GS1-128 з AI 00 (SSCC палет/вантажних місць), QR. Бібліотеки python-barcode, segno, reportlab."""
 import io
 import os
+from pathlib import Path
 
 import barcode
 import segno
@@ -11,8 +12,10 @@ from app.errors import Invalid
 from app.services import gs1
 
 KINDS = ("ean13", "code128", "sscc", "gs1", "qr")
+FONT_DIR = Path(__file__).resolve().parent.parent / "fonts"
 FONT_CANDIDATES = [
     os.environ.get("PDF_FONT", ""),
+    str(FONT_DIR / "DejaVuSans.ttf"),  # вбудований шрифт з кирилицею (DejaVu, вільна ліцензія)
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     "C:/Windows/Fonts/arial.ttf",
@@ -20,7 +23,9 @@ FONT_CANDIDATES = [
 ]
 
 
-def find_font() -> str | None:
+def find_font(bold: bool = False) -> str | None:
+    if bold and (FONT_DIR / "DejaVuSans-Bold.ttf").exists():
+        return str(FONT_DIR / "DejaVuSans-Bold.ttf")
     return next((f for f in FONT_CANDIDATES if f and os.path.exists(f)), None)
 
 

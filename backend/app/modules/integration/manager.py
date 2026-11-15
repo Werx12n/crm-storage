@@ -11,7 +11,9 @@ from app.modules.integration.gateways import DeliveryGateway, ERPGateway, Gatewa
 from app.services.events import EventTypes
 
 ERP_EVENTS = {EventTypes.RECEIVING_COMPLETED, EventTypes.ORDER_STATUS, EventTypes.SHIPPED,
-              EventTypes.STOCK_ADJUSTED}
+              EventTypes.STOCK_ADJUSTED, EventTypes.OPERATIONS_FILE}
+CONFIRMED_OPS = ("RECEIPT", "PUTAWAY", "PICK", "SHIPMENT", "ADJUSTMENT", "REPLENISH")
+FILE_COUNTER = "ERP_FILE_LAST_OP"
 
 
 def event_dict(e: Event) -> dict:
@@ -85,6 +87,44 @@ class IntegrationManager(ManagerBase):
         self.journal.add("Статус доставки", self.login, f"{ttn}: {status}")
         self.commit()
         return {"ttn": ttn, "status": d.status, "order_number": d.order.number}
+
+    # --- ВП-09: файл підтверджених складських операцій для ERP ---
+    def build_operations_file(self) -> dict | None:
+        """Збирає операції після попереднього файлу і ставить файл у чергу до ERP."""
+        last = self.docs.counter(FILE_COUNTER)
+        ops = self.stock.operations_after(last, CONFIRMED_OPS)
+        if not ops:
+            return None
+        now = utcnow()
+        rows = []
+        for op in ops:
+            st = op.stock
+            rows.append({"id": op.id, "time": iso(op.time), "type": op.type, "quantity": num(op.quantity),
+                         "product_code": st.batch.product.code if st else None,
+                         "gtin": st.batch.product.gtin if st else None,
+                         "batch": st.batch.number if st else None, "cell": st.cell.address if st else None,
+                         "user": op.user.login if op.user else None, "details": op.details})
+        content = {"file_name": f"WMS_{settings.warehouse_code}_OPS_{now:%Y%m%d_%H%M%S}.json",
+                   "generated_at": iso(now), "warehouse": settings.warehouse_code,
+                   "from_operation": ops[0].id, "to_operation": ops[-1].id, "count": len(rows), "operations": rows}
+        self.docs.set_counter(FILE_COUNTER, ops[-1].id)
+        self.publisher.publish(EventTypes.OPERATIONS_FILE, content)
+        self.journal.add("Сформовано файл операцій для ERP (ВП-09)", self.login,
+                         f"{content['file_name']}: {len(rows)} операцій")
+        self.commit()
+        return {k: v for k, v in content.items() if k != "operations"}
+
+    def operations_files(self, limit: int = 50) -> list[dict]:
+        return [{"id": e.id, "file_name": e.payload.get("file_name"), "count": e.payload.get("count"),
+                 "generated_at": e.payload.get("generated_at"), "status": e.status,
+                 "processed_at": iso(e.processed_at)}
+                for e in reversed(self.events.by_type(EventTypes.OPERATIONS_FILE)[-limit:])]
+
+    def operations_file(self, event_id: int) -> dict:
+        e = self.events.get(event_id)
+        if e is None or e.type != EventTypes.OPERATIONS_FILE:
+            raise NotFound("Файл операцій не знайдено", code="file_not_found")
+        return e.payload
 
     def export_stock(self) -> dict:
         """Вивантаження залишків для облікової системи (FR-6.2)."""

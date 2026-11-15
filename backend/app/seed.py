@@ -140,6 +140,8 @@ def seed(s: Session, with_documents: bool = True) -> bool:
         s.add(Counterparty(code=code, name=name, kind=kind))
     for code, value, desc in [("min_shelf_days", "30", "BRL-03: мінімальний залишковий термін придатності, днів"),
                               ("inventory_threshold", "2", "Поріг розбіжності для повторного перерахунку, од."),
+                              ("order_lead_hours", "24", "KPI OTIF: нормативний строк виконання замовлення, год"),
+                              ("handling_costs_period", "", "KPI 9: витрати складу за період, грн (вводяться вручну)"),
                               ("putaway_strategy", "zone,capacity,abc,consolidation",
                                "FR-2.1: порядок правил вибору комірки")]:
         s.add(Rule(code=code, value=value, description=desc))

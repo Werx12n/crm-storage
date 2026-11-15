@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,7 @@ class OrderLineIn(BaseModel):
 class OrderIn(BaseModel):
     number: str = Field(min_length=1, max_length=50)
     client: str = ""
+    due_at: dt.datetime | None = Field(default=None, description="Строк відвантаження (за замовчуванням +order_lead_hours)")
     lines: list[OrderLineIn]
     create_task: bool = Field(default=True, description="Одразу сформувати завдання на відбір (False — для хвиль)")
 
@@ -67,6 +69,24 @@ def erp_order(body: OrderIn, s: Session = Depends(get_session), u: User = Depend
 @router.get("/erp/stock", summary="Вивантаження залишків для ERP")
 def erp_stock(s: Session = Depends(get_session), u: User = Depends(require_roles(*SYS, Roles.ACCOUNTANT))):
     return IntegrationManager(s, u).export_stock()
+
+
+@router.post("/erp/operations-file", summary="ВП-09: сформувати файл підтверджених операцій для ERP зараз")
+def erp_file(s: Session = Depends(get_session), u: User = Depends(require_roles(*SYS))):
+    res = IntegrationManager(s, u).build_operations_file()
+    return res or {"message": "Нових підтверджених операцій немає"}
+
+
+@router.get("/erp/operations-files", summary="ВП-09: сформовані файли операцій")
+def erp_files(s: Session = Depends(get_session), u: User = Depends(require_roles(*SYS, Roles.ACCOUNTANT))):
+    return IntegrationManager(s, u).operations_files()
+
+
+@router.get("/erp/operations-files/{event_id}", summary="ВП-09: вміст файлу операцій (JSON)")
+def erp_file_get(event_id: int, s: Session = Depends(get_session),
+                 u: User = Depends(require_roles(*SYS, Roles.ACCOUNTANT))):
+    data = IntegrationManager(s, u).operations_file(event_id)
+    return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{data["file_name"]}"'})
 
 
 @router.post("/delivery/status", summary="ШлюзСлужбиДоставки.прийнятиСтатус(статус)")

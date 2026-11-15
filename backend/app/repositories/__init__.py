@@ -122,6 +122,20 @@ class StockRepository:
         self.s.add(op)
         return op
 
+    def operations_after(self, last_id: int, types: tuple[str, ...], limit: int = 5000) -> list[Operation]:
+        return list(self.s.scalars(select(Operation).where(Operation.id > last_id, Operation.type.in_(types))
+                                   .order_by(Operation.id).limit(limit)))
+
+    def total_quantity(self) -> Decimal:
+        return Decimal(str(self.s.scalar(select(func.coalesce(func.sum(Stock.quantity), 0))) or 0))
+
+    def cell_count_occupied(self, zones: tuple[str, ...]) -> tuple[int, int]:
+        total = self.s.scalar(select(func.count()).select_from(Cell).where(Cell.zone.in_(zones),
+                                                                            Cell.is_active.is_(True))) or 0
+        occupied = self.s.scalar(select(func.count(func.distinct(Stock.cell_id))).join(Cell, Stock.cell_id == Cell.id)
+                                 .where(Cell.zone.in_(zones), Stock.quantity > 0)) or 0
+        return int(occupied), int(total)
+
     def operations(self, start: datetime | None = None, end: datetime | None = None,
                    types: tuple[str, ...] | None = None) -> list[Operation]:
         q = select(Operation)
@@ -221,6 +235,26 @@ class DocumentRepository:
     def list_inventories(self) -> list[Inventory]:
         return list(self.s.scalars(select(Inventory).order_by(Inventory.id.desc())))
 
+    def counter(self, name: str) -> int:
+        c = self.s.get(Counter, name)
+        return c.value if c else 0
+
+    def set_counter(self, name: str, value: int) -> None:
+        c = self.s.get(Counter, name)
+        if c is None:
+            self.s.add(Counter(name=name, value=value))
+        else:
+            c.value = value
+        self.s.flush()
+
+    def dispatches_between(self, start: datetime | None, end: datetime | None) -> list[Dispatch]:
+        q = select(Dispatch)
+        if start:
+            q = q.where(Dispatch.created_at >= start)
+        if end:
+            q = q.where(Dispatch.created_at < end)
+        return list(self.s.scalars(q.order_by(Dispatch.id)))
+
     def next_number(self, name: str) -> int:
         q = select(Counter).where(Counter.name == name)
         if dbmod.is_postgres():
@@ -279,6 +313,20 @@ class TaskRepository:
         return self.s.scalar(select(Task).join(Task.lines).where(
             Task.type == "REPLENISH", Task.status.in_(("NEW", "IN_PROGRESS")),
             TaskLine.product_id == product_id))
+
+    def created_between(self, start: datetime | None, end: datetime | None,
+                        types: tuple[str, ...] | None = None) -> list[Task]:
+        q = select(Task)
+        if start:
+            q = q.where(Task.created_at >= start)
+        if end:
+            q = q.where(Task.created_at < end)
+        if types:
+            q = q.where(Task.type.in_(types))
+        return list(self.s.scalars(q.order_by(Task.id)))
+
+    def get_line(self, line_id: int) -> TaskLine | None:
+        return self.s.get(TaskLine, line_id)
 
     def completed(self, start: datetime | None, end: datetime | None) -> list[Task]:
         q = select(Task).where(Task.completed_at.is_not(None))
@@ -420,6 +468,14 @@ class EventRepository:
         if status:
             q = q.where(Event.status == status)
         return list(self.s.scalars(q.order_by(Event.id.desc()).limit(limit)))
+
+    def by_type(self, type_: str, start: datetime | None = None, end: datetime | None = None) -> list[Event]:
+        q = select(Event).where(Event.type == type_)
+        if start:
+            q = q.where(Event.created_at >= start)
+        if end:
+            q = q.where(Event.created_at < end)
+        return list(self.s.scalars(q.order_by(Event.id)))
 
     def get(self, event_id: int) -> Event | None:
         return self.s.get(Event, event_id)

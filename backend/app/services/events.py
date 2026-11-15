@@ -9,6 +9,7 @@ class EventTypes:
     SHIPPED = "Shipped"                          # Відвантажено (списання) → ERP
     DELIVERY_REQUESTED = "DeliveryRequested"     # заявка → служба доставки
     STOCK_ADJUSTED = "StockAdjusted"             # коригування інвентаризації → ERP
+    OPERATIONS_FILE = "OperationsFile"           # ВП-09: файл підтверджених операцій → ERP (кожні 15 хв)
 
 
 class EventPublisher:

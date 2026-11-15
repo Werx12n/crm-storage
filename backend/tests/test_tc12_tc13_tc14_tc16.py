@@ -46,7 +46,7 @@ def test_tc13_reports_and_kpi(api, demo_asn):
     api.ok(api.post("/api/shipping/orders/ORD-K1/check", {"code": gtin(6), "quantity": 2}, login="packer"))
     api.ok(api.post("/api/shipping/orders/ORD-K1/ship", login="packer"))
     reps = api.ok(api.get("/api/analytics/reports", login="accountant"))
-    assert [r["code"] for r in reps] == ["ВП-01", "ВП-02", "ВП-03", "ВП-04", "ВП-05", "ВП-06"]
+    assert [r["code"] for r in reps] == [f"ВП-{i:02d}" for i in range(1, 11)] + ["FR-7.2"]
     for r in reps:
         rep = api.ok(api.get(f"/api/analytics/reports/{r['type']}", login="accountant"))
         assert rep["code"] == r["code"] and isinstance(rep["rows"], list)
@@ -55,8 +55,12 @@ def test_tc13_reports_and_kpi(api, demo_asn):
     abc = api.ok(api.get("/api/analytics/reports/abc_xyz", login="accountant"))
     assert abc["rows"][0]["product_code"] == "P-006" and abc["rows"][0]["abc"] == "A"
     kpi = {k["code"]: k["value"] for k in api.ok(api.get("/api/analytics/kpi", login="accountant"))["kpi"]}
-    assert kpi["picking_accuracy"] == 50.0 and kpi["receiving_discrepancy_rate"] == 100.0
-    assert kpi["storage_utilization"] > 0 and kpi["order_cycle_time"] is not None
+    # 1 рядок відбору, на ньому була помилка скану → безпомилкових 0 з 1
+    assert kpi["picking_accuracy"] == 0.0
+    assert kpi["otif"] == 100.0 and kpi["order_cycle_time"] is not None
+    assert kpi["capacity_utilization"] > 0 and kpi["dock_to_stock"] is None  # розміщень ще не було
+    assert kpi["inventory_turnover"] > 0 and kpi["labor_productivity"] > 0
+    assert kpi["order_handling_cost"] is None  # витрати не введено → n/a
     # 2а: порожній період
     empty = api.ok(api.get("/api/analytics/reports/movement?date_from=2001-01-01&date_to=2001-01-31",
                            login="accountant"))

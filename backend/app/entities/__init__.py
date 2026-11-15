@@ -171,6 +171,7 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(20), default="NEW")
     wave: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # строк для OTIF (KPI 3)
     picked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     shipped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     lines: Mapped[list["OrderLine"]] = relationship(

@@ -54,7 +54,7 @@ def packing_list(dispatch_id: int, s: Session = Depends(get_session), u: User = 
     d = ShippingManager(s, u).get(dispatch_id)
     pl = d.packing_list or {}
     return document_html(
-        f"Пакувальний лист {pl.get('number', '')}",
+        f"ВП-08. Пакувальний лист {pl.get('number', '')}",
         [("Замовлення", d.order.number), ("Клієнт", d.order.client), ("Дата", pl.get("date", "")),
          ("SSCC", d.sscc), ("ТТН", d.ttn_number or "очікується"), ("Рампа", pl.get("ramp") or "—"),
          ("Слот", pl.get("slot_start") or "—")],
@@ -70,4 +70,4 @@ def dispatch_label(dispatch_id: int, s: Session = Depends(get_session), u: User 
     pl = d.packing_list or {}
     return label_html(d.sscc, [("Замовлення", d.order.number), ("Клієнт", d.order.client),
                                ("ТТН", d.ttn_number or "очікується"), ("Вага, кг", pl.get("total_weight", ""))],
-                      title="Етикетка відправлення (SSCC)")
+                      title="ВП-08. Етикетка відправлення (SSCC)")

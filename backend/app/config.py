@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     http_timeout: float = 5.0
 
     worker_interval: float = 2.0
+    erp_file_interval: int = 900  # ВП-09: файл операцій для ERP кожні 15 хв
     max_event_attempts: int = 20
 
     gs1_company_prefix: str = "4820000"
