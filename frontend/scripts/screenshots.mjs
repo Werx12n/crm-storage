@@ -124,6 +124,18 @@ try {
   await page.waitForSelector("table");
   await shot("07-orders.png");
 
+  const form = page.locator(".card", { hasText: "Нове замовлення в магазин" });
+  await form.locator("input").nth(0).fill("ORD-2001");
+  await form.locator("input").nth(1).fill("Магазин №5, Київ");
+  await page.waitForFunction(() => document.querySelectorAll(".card select option").length > 3);
+  await form.locator("select").nth(0).selectOption("P-001");
+  await form.locator("input[type=number]").nth(0).fill("10");
+  await form.locator("button:has-text('Рядок')").click();
+  await form.locator("select").nth(1).selectOption("P-005");
+  await form.locator("input[type=number]").nth(1).fill("5");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await shot("08-order-form.png");
+
   // ТЗД — мобільний розмір
   const mob = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: "uk-UA" });
   const m = await mob.newPage();
